@@ -38,7 +38,7 @@ function App() {
 
   useEffect(() => {
     const initial = window.setTimeout(() => void loadStatus(), 0)
-    const timer = window.setInterval(() => void loadStatus(true), 5000)
+    const timer = window.setInterval(() => void loadStatus(true), 30000)
     return () => {
       window.clearTimeout(initial)
       window.clearInterval(timer)
