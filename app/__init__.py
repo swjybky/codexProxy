@@ -1,0 +1,2 @@
+"""Codex Proxy desktop application."""
+

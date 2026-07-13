@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Codex Proxy
+Comment=Local Codex reverse proxy
+Exec=CodexProxy
+Icon=codex-proxy
+Terminal=false
+Categories=Development;Utility;
+StartupNotify=true
+StartupWMClass=CodexProxy
