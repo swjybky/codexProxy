@@ -231,7 +231,7 @@ class CodexProxy:
                     ],
                 }
             ],
-            "stream": False,
+            "stream": True,
         }
         response, _ = self.open(payload, compact=False)
         try:
@@ -243,7 +243,32 @@ class CodexProxy:
                     502,
                     "connection_test_failed",
                 )
-            result = json.loads(raw.decode("utf-8"))
-            return {"ok": True, "response_id": result.get("id", ""), "model": result.get("model", model)}
+            return {"ok": True, **_parse_test_response(raw, model)}
         finally:
             response.close()
+
+
+def _parse_test_response(raw: bytes, fallback_model: str) -> dict[str, str]:
+    text = raw.decode("utf-8", errors="replace")
+    try:
+        result = json.loads(text)
+        return {"response_id": str(result.get("id", "")), "model": str(result.get("model", fallback_model))}
+    except json.JSONDecodeError:
+        pass
+    for line in text.splitlines():
+        line = line.strip()
+        if line.startswith("data: "):
+            data = line[6:]
+            if data == "[DONE]":
+                continue
+            try:
+                event = json.loads(data)
+            except json.JSONDecodeError:
+                continue
+            response_obj = event.get("response", event)
+            if isinstance(response_obj, dict):
+                return {
+                    "response_id": str(response_obj.get("id", "")),
+                    "model": str(response_obj.get("model", fallback_model)),
+                }
+    return {"response_id": "", "model": fallback_model}

@@ -27,7 +27,7 @@ class UpstreamHandler(BaseHTTPRequestHandler):
         type(self).received_headers = dict(self.headers)
         type(self).received_payload = json.loads(self.rfile.read(length))
         if self.received_payload.get("stream"):
-            body = b'data: {"type":"response.completed"}\n\ndata: [DONE]\n\n'
+            body = b'data: {"type":"response.created","response":{"id":"resp_test","model":"gpt-5.4"}}\n\ndata: [DONE]\n\n'
             content_type = "text/event-stream"
         else:
             body = b'{"id":"resp_test","object":"response"}'
@@ -104,7 +104,7 @@ class ServerIntegrationTest(unittest.TestCase):
         with urllib.request.urlopen(request, timeout=3) as response:
             body = response.read().decode()
 
-        self.assertIn("response.completed", body)
+        self.assertIn("data:", body)
         self.assertEqual(UpstreamHandler.received_path, "/backend-api/codex/responses")
         self.assertEqual(UpstreamHandler.received_headers["Chatgpt-Account-Id"], "account-42")
         self.assertEqual(UpstreamHandler.received_headers["Originator"], "codex_cli_rs")
@@ -118,6 +118,8 @@ class ServerIntegrationTest(unittest.TestCase):
             payload = json.loads(response.read())
 
         self.assertIs(payload["ok"], True)
+        self.assertEqual(payload["response_id"], "resp_test")
+        self.assertEqual(payload["model"], "gpt-5.4")
         self.assertEqual(
             UpstreamHandler.received_payload["input"],
             [
@@ -127,7 +129,7 @@ class ServerIntegrationTest(unittest.TestCase):
                 }
             ],
         )
-        self.assertIs(UpstreamHandler.received_payload["stream"], False)
+        self.assertIs(UpstreamHandler.received_payload["stream"], True)
 
     def test_rejects_invalid_local_api_key(self) -> None:
         request = self.request("/v1/responses", {"model": "gpt-5.4"}, "wrong")
