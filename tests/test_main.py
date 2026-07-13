@@ -4,6 +4,7 @@ import unittest
 from enum import Enum
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from app.main import patch_pywebview_qt6_permissions
 from app.runtime_paths import app_icon_path
@@ -70,8 +71,16 @@ class QtPermissionPatchTest(unittest.TestCase):
 
 
 class AppIconTest(unittest.TestCase):
-    def test_desktop_icon_is_available_in_source_tree(self) -> None:
-        icon = app_icon_path()
+    def test_windows_uses_ico_accepted_by_system_drawing(self) -> None:
+        with patch("app.runtime_paths.sys.platform", "win32"):
+            icon = app_icon_path()
+
+        self.assertEqual(icon.name, "app-icon.ico")
+        self.assertTrue(Path(icon).is_file())
+
+    def test_other_platforms_use_portable_png(self) -> None:
+        with patch("app.runtime_paths.sys.platform", "linux"):
+            icon = app_icon_path()
 
         self.assertEqual(icon.name, "app-icon.png")
         self.assertTrue(Path(icon).is_file())

@@ -6,7 +6,7 @@ import os
 import secrets
 import tempfile
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -36,6 +36,9 @@ SUPPORTED_MODELS = [
     "gpt-5.3-codex-spark",
     "gpt-5.4",
 ]
+
+USER_KEY_TOKEN_LIMITS = (5_000_000, 10_000_000, 20_000_000, 100_000_000)
+USAGE_FIELDS = ("input_tokens", "output_tokens", "cached_tokens")
 
 
 def _utc_now() -> str:
@@ -96,6 +99,8 @@ class AppStore:
         self.root.mkdir(parents=True, exist_ok=True)
         self.settings_path = self.root / "settings.json"
         self.credentials_path = self.root / "credentials.json"
+        self.api_keys_path = self.root / "api_keys.json"
+        self.usage_path = self.root / "token_usage.json"
         self._lock = threading.RLock()
         self._ensure_settings()
 
@@ -170,6 +175,108 @@ class AppStore:
             self._write_json(self.settings_path, settings)
             return settings["local_api_key"]
 
+    def _managed_keys(self) -> list[dict[str, Any]]:
+        stored = self._read_json(self.api_keys_path, {})
+        raw_keys = stored.get("keys", []) if isinstance(stored, dict) else []
+        return [item for item in raw_keys if isinstance(item, dict)]
+
+    def _write_managed_keys(self, keys: list[dict[str, Any]]) -> None:
+        self._write_json(self.api_keys_path, {"keys": keys}, secret=True)
+
+    def _usage_by_key(self) -> dict[str, dict[str, int]]:
+        stored = self._read_json(self.usage_path, {})
+        raw_buckets = stored.get("buckets", {}) if isinstance(stored, dict) else {}
+        totals: dict[str, dict[str, int]] = {}
+        for counts in raw_buckets.values() if isinstance(raw_buckets, dict) else []:
+            for key_id, key_counts in self._bucket_key_counts(counts).items():
+                target = totals.setdefault(key_id, {field: 0 for field in USAGE_FIELDS})
+                for field in USAGE_FIELDS:
+                    target[field] += max(0, int(key_counts.get(field, 0)))
+        return totals
+
+    def list_api_keys(self) -> list[dict[str, Any]]:
+        with self._lock:
+            usage = self._usage_by_key()
+            result = []
+            for item in self._managed_keys():
+                key_id = str(item.get("id", ""))
+                counts = usage.get(key_id, {})
+                used_tokens = max(0, int(counts.get("input_tokens", 0))) + max(
+                    0, int(counts.get("output_tokens", 0))
+                )
+                token_limit = max(0, int(item.get("token_limit", 0)))
+                result.append(
+                    {
+                        **item,
+                        "used_tokens": used_tokens,
+                        "remaining_tokens": max(0, token_limit - used_tokens),
+                    }
+                )
+            return result
+
+    def create_api_key(self, name: Any, token_limit: Any) -> dict[str, Any]:
+        normalized_name = str(name or "").strip()
+        if not normalized_name:
+            raise ValueError("秘钥名称不能为空")
+        if len(normalized_name) > 60:
+            raise ValueError("秘钥名称不能超过 60 个字符")
+        try:
+            normalized_limit = int(token_limit)
+        except (TypeError, ValueError) as error:
+            raise ValueError("请选择有效的 Token 额度") from error
+        if normalized_limit not in USER_KEY_TOKEN_LIMITS:
+            raise ValueError("Token 额度只能选择 500 万、1000 万、2000 万或 1 亿")
+
+        with self._lock:
+            keys = self._managed_keys()
+            if any(str(item.get("name", "")).strip().casefold() == normalized_name.casefold() for item in keys):
+                raise ValueError("秘钥名称已存在")
+            now = _utc_now()
+            created = {
+                "id": "key_" + secrets.token_urlsafe(12),
+                "name": normalized_name,
+                "key": "cp_user_" + secrets.token_urlsafe(30),
+                "token_limit": normalized_limit,
+                "created_at": now,
+            }
+            keys.append(created)
+            self._write_managed_keys(keys)
+            return {**created, "used_tokens": 0, "remaining_tokens": normalized_limit}
+
+    def delete_api_key(self, key_id: str) -> None:
+        with self._lock:
+            keys = self._managed_keys()
+            remaining = [item for item in keys if str(item.get("id", "")) != key_id]
+            if len(remaining) == len(keys):
+                raise ValueError("秘钥不存在")
+            self._write_managed_keys(remaining)
+            self._remove_key_usage(key_id)
+
+    def reset_api_key_usage(self, key_id: str) -> dict[str, Any]:
+        with self._lock:
+            if not any(str(item.get("id", "")) == key_id for item in self._managed_keys()):
+                raise ValueError("秘钥不存在")
+            self._remove_key_usage(key_id)
+            return next(item for item in self.list_api_keys() if item["id"] == key_id)
+
+    def authenticate_api_key(self, supplied: str) -> dict[str, Any] | None:
+        if not supplied:
+            return None
+        with self._lock:
+            admin_key = str(self.get_settings().get("local_api_key", ""))
+            if admin_key and secrets.compare_digest(admin_key, supplied):
+                return {"id": "admin", "name": "管理员 Key", "token_limit": None, "used_tokens": 0}
+            for item in self.list_api_keys():
+                stored_key = str(item.get("key", ""))
+                if stored_key and secrets.compare_digest(stored_key, supplied):
+                    return {
+                        "id": item["id"],
+                        "name": item["name"],
+                        "token_limit": item["token_limit"],
+                        "used_tokens": item["used_tokens"],
+                    }
+        return None
+
     def get_credentials(self) -> dict[str, str] | None:
         with self._lock:
             value = self._read_json(self.credentials_path, None)
@@ -207,4 +314,108 @@ class AppStore:
             "expired": credentials.get("expired", ""),
             "last_refresh": credentials.get("last_refresh", ""),
             "refreshable": bool(credentials.get("refresh_token")),
+        }
+
+    @staticmethod
+    def _bucket_key_counts(counts: Any) -> dict[str, dict[str, Any]]:
+        if not isinstance(counts, dict):
+            return {}
+        # Compatibility with the original format where a bucket directly held
+        # token fields. Those historical records belong to the admin key.
+        if any(field in counts for field in USAGE_FIELDS):
+            return {"admin": counts}
+        return {str(key_id): value for key_id, value in counts.items() if isinstance(value, dict)}
+
+    def _remove_key_usage(self, key_id: str) -> None:
+        stored = self._read_json(self.usage_path, {})
+        raw_buckets = stored.get("buckets", {}) if isinstance(stored, dict) else {}
+        cleaned: dict[str, dict[str, dict[str, Any]]] = {}
+        for timestamp, counts in raw_buckets.items() if isinstance(raw_buckets, dict) else []:
+            by_key = self._bucket_key_counts(counts)
+            by_key.pop(key_id, None)
+            if by_key:
+                cleaned[str(timestamp)] = by_key
+        self._write_json(self.usage_path, {"buckets": cleaned})
+
+    def record_token_usage(
+        self,
+        input_tokens: int,
+        output_tokens: int,
+        cached_tokens: int = 0,
+        key_id: str = "admin",
+    ) -> None:
+        """Persist token counts in hourly buckets without retaining request-level data."""
+        values = {
+            "input_tokens": max(0, int(input_tokens)),
+            "output_tokens": max(0, int(output_tokens)),
+            "cached_tokens": max(0, int(cached_tokens)),
+        }
+        if not any(values.values()):
+            return
+        bucket = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0).isoformat().replace("+00:00", "Z")
+        with self._lock:
+            stored = self._read_json(self.usage_path, {})
+            if not isinstance(stored, dict):
+                stored = {}
+            buckets = stored.get("buckets")
+            if not isinstance(buckets, dict):
+                buckets = {}
+            by_key = self._bucket_key_counts(buckets.get(bucket))
+            current = by_key.get(key_id, {})
+            by_key[key_id] = {
+                key: max(0, int(current.get(key, 0))) + value
+                for key, value in values.items()
+            }
+            buckets[bucket] = by_key
+            self._write_json(self.usage_path, {"buckets": buckets})
+
+    def token_usage(self, range_name: str, key_id: str | None = None) -> dict[str, Any]:
+        ranges = {
+            "24h": timedelta(hours=24),
+            "7d": timedelta(days=7),
+            "30d": timedelta(days=30),
+            "all": None,
+        }
+        selected = range_name if range_name in ranges else "24h"
+        now = datetime.now(timezone.utc)
+        since = now - ranges[selected] if ranges[selected] is not None else None
+        with self._lock:
+            stored = self._read_json(self.usage_path, {})
+            raw_buckets = stored.get("buckets", {}) if isinstance(stored, dict) else {}
+
+        grouped: dict[str, dict[str, int]] = {}
+        for timestamp, counts in raw_buckets.items() if isinstance(raw_buckets, dict) else []:
+            if not isinstance(counts, dict):
+                continue
+            try:
+                point_time = datetime.fromisoformat(str(timestamp).replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            if since is not None and point_time < since:
+                continue
+            group_time = point_time if selected == "24h" else point_time.replace(hour=0)
+            key = group_time.isoformat().replace("+00:00", "Z")
+            by_key = self._bucket_key_counts(counts)
+            selected_counts = [by_key[key_id]] if key_id and key_id in by_key else (
+                [] if key_id else list(by_key.values())
+            )
+            if not selected_counts:
+                continue
+            target = grouped.setdefault(key, {field: 0 for field in USAGE_FIELDS})
+            for key_counts in selected_counts:
+                for field in target:
+                    target[field] += max(0, int(key_counts.get(field, 0)))
+
+        points = [{"timestamp": timestamp, **grouped[timestamp]} for timestamp in sorted(grouped)]
+        totals = {
+            field: sum(point[field] for point in points)
+            for field in ("input_tokens", "output_tokens", "cached_tokens")
+        }
+        totals["total_tokens"] = totals["input_tokens"] + totals["output_tokens"]
+        return {
+            "range": selected,
+            "bucket": "hour" if selected == "24h" else "day",
+            "key_id": key_id or "all",
+            "totals": totals,
+            "points": points,
         }

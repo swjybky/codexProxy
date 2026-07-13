@@ -5,7 +5,7 @@
 ## 核心能力
 
 - 仅开放 `POST /v1/responses` 与 `POST /v1/responses/compact`
-- 本地 Bearer API Key，服务固定绑定 `127.0.0.1`
+- Bearer API Key 鉴权，同时支持本机与局域网访问
 - 桌面管理令牌与客户端 API Key 分离，阻止其他网页读取密钥或触发管理操作
 - 导入 `~/.codex/auth.json`、Codex CLI JSON 或 new-api Codex 渠道 Key JSON
 - 使用 `refresh_token` 手动刷新 OAuth 凭证
@@ -35,7 +35,7 @@ python3 -m venv .venv
 python3 run.py --browser
 ```
 
-应用默认监听 `http://127.0.0.1:1455`。在 Codex 客户端中将 Base URL 配置为界面显示的 `http://127.0.0.1:1455/v1`，API Key 使用界面生成的本地密钥。
+应用默认监听 `0.0.0.0:1455`。本机客户端可使用界面显示的 `http://127.0.0.1:1455/v1`，同一局域网内的客户端使用“局域网 Base URL”；两者都需要界面生成的 API Key。首次运行时，系统防火墙可能会询问是否允许局域网访问。
 
 Linux Qt 模式包含 pywebview 6.2.1 与 PyQt6 6.11 的权限枚举兼容补丁，避免复制或 WebEngine 权限请求时因 `setFeaturePermission(..., int)` 导致进程崩溃。
 桌面窗口、任务栏、Dock、可执行文件与浏览器页签统一使用蓝色闪电图标。

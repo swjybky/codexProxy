@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -48,7 +49,60 @@ class CredentialsTest(unittest.TestCase):
             self.assertEqual(second.get_settings()["local_api_key"], key)
             self.assertEqual(second.get_settings()["admin_token"], admin_token)
             self.assertEqual(second.get_credentials()["account_id"], "account")
-            self.assertEqual(second.credentials_path.stat().st_mode & 0o777, 0o600)
+            # Windows only exposes the read-only bit through chmod/stat and
+            # cannot represent POSIX 0600 permission bits.
+            if os.name != "nt":
+                self.assertEqual(second.credentials_path.stat().st_mode & 0o777, 0o600)
+
+
+class TokenUsageTest(unittest.TestCase):
+    def test_aggregates_usage_without_request_level_records(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            store = AppStore(Path(temporary))
+            store.record_token_usage(120, 30, 80)
+            store.record_token_usage(20, 10, 5)
+
+            usage = store.token_usage("24h")
+            self.assertEqual(usage["totals"]["input_tokens"], 140)
+            self.assertEqual(usage["totals"]["output_tokens"], 40)
+            self.assertEqual(usage["totals"]["cached_tokens"], 85)
+            self.assertEqual(usage["totals"]["total_tokens"], 180)
+            self.assertEqual(len(usage["points"]), 1)
+            stored = json.loads(store.usage_path.read_text(encoding="utf-8"))
+            self.assertEqual(list(stored), ["buckets"])
+            self.assertEqual(len(stored["buckets"]), 1)
+
+    def test_tracks_filters_and_resets_usage_for_named_user_keys(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            store = AppStore(Path(temporary))
+            created = store.create_api_key("测试用户", 5_000_000)
+            store.record_token_usage(120, 30, 80)
+            store.record_token_usage(400, 100, 20, key_id=created["id"])
+
+            keys = store.list_api_keys()
+            self.assertEqual(keys[0]["name"], "测试用户")
+            self.assertEqual(keys[0]["used_tokens"], 500)
+            self.assertEqual(keys[0]["remaining_tokens"], 4_999_500)
+            self.assertEqual(store.token_usage("all", "admin")["totals"]["total_tokens"], 150)
+            self.assertEqual(store.token_usage("all", created["id"])["totals"]["total_tokens"], 500)
+            self.assertEqual(store.token_usage("all")["totals"]["total_tokens"], 650)
+            self.assertEqual(store.authenticate_api_key(created["key"])["id"], created["id"])
+
+            reset = store.reset_api_key_usage(created["id"])
+            self.assertEqual(reset["used_tokens"], 0)
+            self.assertEqual(store.token_usage("all", created["id"])["points"], [])
+            self.assertEqual(store.token_usage("all", "admin")["totals"]["total_tokens"], 150)
+
+    def test_requires_unique_name_and_supported_quota(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            store = AppStore(Path(temporary))
+            with self.assertRaisesRegex(ValueError, "名称"):
+                store.create_api_key(" ", 5_000_000)
+            with self.assertRaisesRegex(ValueError, "500 万"):
+                store.create_api_key("用户", 123)
+            store.create_api_key("用户", 10_000_000)
+            with self.assertRaisesRegex(ValueError, "已存在"):
+                store.create_api_key("用户", 20_000_000)
 
 
 if __name__ == "__main__":

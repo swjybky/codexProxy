@@ -19,6 +19,7 @@ a = Analysis(
     + [
         (str(root / "web" / "dist"), "web/dist"),
         (str(icons / "app-icon.png"), "packaging/icons"),
+        (str(icons / "app-icon.ico"), "packaging/icons"),
     ],
     hiddenimports=webview_hiddenimports,
     hookspath=[],

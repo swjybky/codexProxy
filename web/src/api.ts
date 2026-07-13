@@ -36,9 +36,40 @@ export interface StatusData {
   }
   credentials: CredentialsSummary
   endpoint: string
+  lan_endpoint: string | null
   local_api_key: string
   settings: ProxySettings
   models: string[]
+}
+
+export type UsageRange = '24h' | '7d' | '30d' | 'all'
+
+export interface ManagedKey {
+  id: string
+  name: string
+  key: string
+  token_limit: number
+  used_tokens: number
+  remaining_tokens: number
+  created_at: string
+}
+
+export interface UsageData {
+  range: UsageRange
+  bucket: 'hour' | 'day'
+  key_id: string
+  totals: {
+    total_tokens: number
+    input_tokens: number
+    output_tokens: number
+    cached_tokens: number
+  }
+  points: Array<{
+    timestamp: string
+    input_tokens: number
+    output_tokens: number
+    cached_tokens: number
+  }>
 }
 
 interface ApiErrorPayload {
@@ -64,6 +95,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   status: () => request<StatusData>('/api/status'),
+  usage: (range: UsageRange, keyId = 'all') =>
+    request<UsageData>(`/api/usage?range=${range}&key_id=${encodeURIComponent(keyId)}`),
+  keys: () => request<{ keys: ManagedKey[] }>('/api/keys'),
+  createKey: (name: string, tokenLimit: number) =>
+    request<{ key: ManagedKey }>('/api/keys', {
+      method: 'POST',
+      body: JSON.stringify({ name, token_limit: tokenLimit }),
+    }),
+  resetKeyUsage: (keyId: string) =>
+    request<{ key: ManagedKey }>(`/api/keys/${encodeURIComponent(keyId)}/reset`, { method: 'POST' }),
+  deleteKey: (keyId: string) =>
+    request<{ deleted: boolean }>(`/api/keys/${encodeURIComponent(keyId)}`, { method: 'DELETE' }),
   saveSettings: (settings: Partial<ProxySettings>) =>
     request<{ settings: ProxySettings }>('/api/settings', {
       method: 'PUT',

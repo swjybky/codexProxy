@@ -20,7 +20,10 @@ def web_dist_dir() -> Path:
 
 
 def app_icon_path() -> Path:
-    return resource_root() / "packaging" / "icons" / "app-icon.png"
+    # pywebview's Windows backend passes this path to System.Drawing.Icon,
+    # which requires an ICO file and cannot load the PNG used by Qt/GTK.
+    extension = ".ico" if sys.platform == "win32" else ".png"
+    return resource_root() / "packaging" / "icons" / f"app-icon{extension}"
 
 
 def data_dir() -> Path:

@@ -21,4 +21,5 @@ export const ShieldIcon = (props: IconProps) => <IconBase {...props}><path d="M1
 export const ExternalIcon = (props: IconProps) => <IconBase {...props}><path d="M15 4h5v5M13 11l7-7"/><path d="M18 13v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h5"/></IconBase>
 export const CloseIcon = (props: IconProps) => <IconBase {...props}><path d="m6 6 12 12M18 6 6 18"/></IconBase>
 export const EyeIcon = (props: IconProps) => <IconBase {...props}><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12"/><circle cx="12" cy="12" r="2.5"/></IconBase>
+export const TokenIcon = (props: IconProps) => <IconBase {...props}><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/></IconBase>
 
