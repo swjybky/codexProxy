@@ -1,5 +1,6 @@
 .data/
 .venv/
+.venv-linux-build/
 __pycache__/
 *.py[cod]
 .pytest_cache/
@@ -8,4 +9,3 @@ web/dist/
 dist/
 build/
 *.spec.bak
-

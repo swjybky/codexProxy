@@ -89,6 +89,12 @@ def main() -> None:
         server.shutdown()
         return
 
+    if sys.platform.startswith("linux"):
+        # QtPy otherwise picks whichever Qt binding happens to be installed
+        # first. The Linux bundle ships PySide6 because it includes WebEngine.
+        os.environ.setdefault("QT_API", "pyside6")
+        os.environ.setdefault("PYWEBVIEW_GUI", "qt")
+
     try:
         import webview
     except ImportError as error:

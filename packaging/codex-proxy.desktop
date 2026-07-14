@@ -2,7 +2,7 @@
 Type=Application
 Name=Codex Proxy
 Comment=Local Codex reverse proxy
-Exec=CodexProxy
+Exec=codex-proxy
 Icon=codex-proxy
 Terminal=false
 Categories=Development;Utility;

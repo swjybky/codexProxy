@@ -1,2 +1,3 @@
-pywebview>=6.2.1,<7
+pywebview[pyside6]>=6.2.1,<7; sys_platform == "linux"
+pywebview>=6.2.1,<7; sys_platform != "linux"
 pyinstaller>=6.0,<7

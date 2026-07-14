@@ -92,6 +92,18 @@ Linux：
 产物位于 `dist/CodexProxy/`，并随包附带 freedesktop 启动器与
 `hicolor` 应用图标资源。
 
+Ubuntu/Debian 安装包：
+
+```bash
+./packaging/build_deb.sh
+sudo apt install ./dist/codex-proxy_0.1.0_amd64.deb
+```
+
+安装后可从应用菜单启动“Codex Proxy”，或执行 `codex-proxy`。版本号默认
+读取 `web/package.json`，也可通过 `VERSION=1.2.3 ./packaging/build_deb.sh`
+覆盖。仅需把已经生成的 `dist/CodexProxy/` 封装为 `.deb` 时，可设置
+`SKIP_APP_BUILD=1`。
+
 macOS（需在 macOS 上执行）：
 
 ```bash
