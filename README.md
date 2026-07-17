@@ -14,6 +14,16 @@
 - 强制 `store=false`，过滤 `max_output_tokens`、`temperature` 和非 Responses DTO 字段
 - React 管理界面：服务状态、接入信息、凭证与适配设置
 
+## 展示
+### 间接功能，快速使用
+局域网内反代api
+<img width="1130" height="753" alt="image" src="https://github.com/user-attachments/assets/3dd91dd0-599e-432f-8797-e344f891421c" />
+凭证一键导入
+<img width="1119" height="759" alt="image" src="https://github.com/user-attachments/assets/ce95d518-21dc-4662-a0d0-e739c173f9cf" />
+token消耗管理
+<img width="1108" height="757" alt="image" src="https://github.com/user-attachments/assets/dc03b87e-dbd5-416b-bbff-800170d3a289" />
+
+
 ## 本地运行
 
 ```bash
