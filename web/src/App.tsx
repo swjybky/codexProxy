@@ -138,13 +138,27 @@ function App() {
   }
 
   const resetManagedKey = async (key: ManagedKey) => {
-    if (!window.confirm(`确认重置“${key.name}”的 Token 用量吗？`)) return
+    if (!window.confirm(`确认重置“${key.name}”的 Token 额度用量吗？历史 Token 统计会保留。`)) return
     setBusy(`reset-${key.id}`)
     try {
       const data = await api.resetKeyUsage(key.id)
       setManagedKeys((current) => current.map((item) => item.id === key.id ? data.key : item))
       setUsageVersion((value) => value + 1)
-      setNotice({ tone: 'success', message: `“${key.name}”的用量已重置` })
+      setNotice({ tone: 'success', message: `“${key.name}”的额度用量已重置，历史统计已保留` })
+    } catch (error) {
+      setNotice({ tone: 'error', message: errorMessage(error) })
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const updateManagedKeyLimit = async (key: ManagedKey, tokenLimit: number) => {
+    if (tokenLimit === key.token_limit) return
+    setBusy(`limit-${key.id}`)
+    try {
+      const data = await api.updateKeyLimit(key.id, tokenLimit)
+      setManagedKeys((current) => current.map((item) => item.id === key.id ? data.key : item))
+      setNotice({ tone: 'success', message: `“${key.name}”的额度已调整为 ${formatQuota(tokenLimit)}` })
     } catch (error) {
       setNotice({ tone: 'error', message: errorMessage(error) })
     } finally {
@@ -233,6 +247,7 @@ function App() {
                 busy={busy}
                 onCreate={createManagedKey}
                 onCopy={copy}
+                onLimitChange={updateManagedKeyLimit}
                 onReset={resetManagedKey}
                 onDelete={deleteManagedKey}
               />
@@ -267,12 +282,13 @@ function App() {
   )
 }
 
-function KeyManagement({ keys, loading, busy, onCreate, onCopy, onReset, onDelete }: {
+function KeyManagement({ keys, loading, busy, onCreate, onCopy, onLimitChange, onReset, onDelete }: {
   keys: ManagedKey[]
   loading: boolean
   busy: string
   onCreate: (name: string, tokenLimit: number) => Promise<boolean>
   onCopy: (value: string, message: string) => void
+  onLimitChange: (key: ManagedKey, tokenLimit: number) => void
   onReset: (key: ManagedKey) => void
   onDelete: (key: ManagedKey) => void
 }) {
@@ -303,14 +319,14 @@ function KeyManagement({ keys, loading, busy, onCreate, onCopy, onReset, onDelet
         </form>
       </section>
 
-      <section className="key-list-heading"><div><h2>用户秘钥</h2><p>达到额度后，请求会被暂停，重置用量后即可恢复</p></div><span>{keys.length} 个</span></section>
+      <section className="key-list-heading"><div><h2>用户秘钥</h2><p>可直接调整用户额度；调整额度和重置额度用量都不会清空 Token 统计</p></div><span>{keys.length} 个</span></section>
       {loading && !keys.length ? <div className="key-empty"><i />正在加载秘钥…</div> : keys.length ? (
         <section className="key-list">
           {keys.map((key) => {
             const percent = Math.min(100, key.token_limit ? key.used_tokens / key.token_limit * 100 : 0)
             return (
               <article className="card managed-key" key={key.id}>
-                <div className="managed-key-head"><div><span className="managed-key-icon"><KeyIcon /></span><div><h3>{key.name}</h3><p>创建于 {formatDate(key.created_at)}</p></div></div><span className={percent >= 100 ? 'quota-badge exhausted' : 'quota-badge'}>{formatQuota(key.token_limit)}</span></div>
+                <div className="managed-key-head"><div><span className="managed-key-icon"><KeyIcon /></span><div><h3>{key.name}</h3><p>创建于 {formatDate(key.created_at)}</p></div></div><select className={percent >= 100 ? 'quota-select exhausted' : 'quota-select'} aria-label={`调整“${key.name}”的 Token 额度`} value={key.token_limit} disabled={busy === `limit-${key.id}`} onChange={(event) => onLimitChange(key, Number(event.target.value))}>{quotaOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>
                 <div className="managed-key-value"><code>{maskManagedKey(key.key)}</code><button className="copy-button" onClick={() => onCopy(key.key, `“${key.name}”秘钥已复制`)}><CopyIcon />复制</button></div>
                 <div className="quota-row"><div><span>已使用 {formatTokens(key.used_tokens)}</span><strong>{percent.toFixed(percent >= 10 ? 0 : 1)}%</strong></div><div className="quota-track"><i style={{ width: `${percent}%` }} /></div><small>剩余 {key.remaining_tokens.toLocaleString('zh-CN')} Token</small></div>
                 <div className="managed-key-actions"><button className="secondary-button" disabled={busy === `reset-${key.id}` || key.used_tokens === 0} onClick={() => onReset(key)}><RefreshIcon />{busy === `reset-${key.id}` ? '重置中…' : '重置用量'}</button><button className="danger-button" disabled={busy === `delete-${key.id}`} onClick={() => onDelete(key)}>{busy === `delete-${key.id}` ? '删除中…' : '删除秘钥'}</button></div>

@@ -173,6 +173,19 @@ class ServerIntegrationTest(unittest.TestCase):
         self.assertEqual(error["code"], "insufficient_quota")
         self.assertEqual(error["message"], "用量不足，请找管理员重置")
 
+        update = urllib.request.Request(
+            f"http://127.0.0.1:{self.server.server_port}/api/keys/{created['id']}",
+            data=json.dumps({"token_limit": 100_000_000}).encode(),
+            method="PUT",
+        )
+        update.add_header("Content-Type", "application/json")
+        update.add_header("X-Admin-Token", self.store.get_settings()["admin_token"])
+        with urllib.request.urlopen(update, timeout=3) as response:
+            updated = json.loads(response.read())["key"]
+        self.assertEqual(updated["token_limit"], 100_000_000)
+        self.assertEqual(updated["used_tokens"], 5_000_000)
+        self.assertEqual(updated["remaining_tokens"], 95_000_000)
+
         reset = self.admin_request(f"/api/keys/{created['id']}/reset", {})
         with urllib.request.urlopen(reset, timeout=3) as response:
             self.assertEqual(json.loads(response.read())["key"]["used_tokens"], 0)
@@ -194,7 +207,15 @@ class ServerIntegrationTest(unittest.TestCase):
         with urllib.request.urlopen(usage_request, timeout=3) as response:
             usage = json.loads(response.read())
         self.assertEqual(usage["key_id"], created["id"])
-        self.assertEqual(usage["totals"]["total_tokens"], 150)
+        self.assertEqual(usage["totals"]["total_tokens"], 5_000_150)
+
+        keys_url = f"http://127.0.0.1:{self.server.server_port}/api/keys"
+        keys_request = urllib.request.Request(keys_url)
+        keys_request.add_header("X-Admin-Token", self.store.get_settings()["admin_token"])
+        with urllib.request.urlopen(keys_request, timeout=3) as response:
+            key_after_recharge = json.loads(response.read())["keys"][0]
+        self.assertEqual(key_after_recharge["used_tokens"], 150)
+        self.assertEqual(key_after_recharge["remaining_tokens"], 99_999_850)
 
 
 class TokenUsageParsingTest(unittest.TestCase):

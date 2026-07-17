@@ -283,15 +283,23 @@ class RequestHandler(BaseHTTPRequestHandler):
         self._serve_static(path)
 
     def do_PUT(self) -> None:
-        if urlparse(self.path).path != "/api/settings":
-            self._error(ProxyError("接口不存在", 404, "not_found"))
-            return
+        path = urlparse(self.path).path
         if not self._require_admin():
             return
         try:
-            settings = self.server.store.update_settings(self._read_json())
-            private_keys = {"local_api_key", "admin_token"}
-            self._json(200, {"settings": {key: value for key, value in settings.items() if key not in private_keys}})
+            if path == "/api/settings":
+                settings = self.server.store.update_settings(self._read_json())
+                private_keys = {"local_api_key", "admin_token"}
+                self._json(200, {"settings": {key: value for key, value in settings.items() if key not in private_keys}})
+            elif re.fullmatch(r"/api/keys/[^/]+", path):
+                payload = self._read_json()
+                if not isinstance(payload, dict):
+                    raise ProxyError("请求体必须是 JSON 对象")
+                key_id = unquote(path.split("/")[3])
+                updated = self.server.store.update_api_key_limit(key_id, payload.get("token_limit"))
+                self._json(200, {"key": updated})
+            else:
+                self._error(ProxyError("接口不存在", 404, "not_found"))
         except (ProxyError, ValueError) as error:
             self._error(error, 400, "invalid_settings")
 

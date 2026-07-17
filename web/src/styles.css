@@ -79,8 +79,9 @@ nav { display: grid; gap: 7px; }
 .managed-key-icon svg { width: 16px; }
 .managed-key h3 { overflow: hidden; margin: 0 0 4px; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .managed-key-head p { margin: 0; color: #9aa3ae; font-size: 8px; }
-.quota-badge { flex: 0 0 auto; padding: 5px 7px; color: #39715e; border-radius: 5px; background: #edf8f3; font-size: 8px; font-weight: 700; }
-.quota-badge.exhausted { color: #b24444; background: #fff0f0; }
+.quota-select { flex: 0 0 auto; height: 27px; padding: 0 24px 0 8px; color: #39715e; border: 1px solid #d9eee5; border-radius: 6px; outline: none; background-color: #edf8f3; font-size: 8px; font-weight: 700; }
+.quota-select:focus { border-color: #9bcab8; box-shadow: 0 0 0 3px rgba(57,113,94,.08); }
+.quota-select.exhausted { color: #b24444; border-color: #f0d6d6; background-color: #fff0f0; }
 .managed-key-value { min-height: 38px; display: flex; align-items: center; gap: 7px; margin-top: 17px; padding: 0 5px 0 11px; border: 1px solid #e5e8ec; border-radius: 7px; background: #fafbfc; }
 .managed-key-value code { min-width: 0; flex: 1; overflow: hidden; color: #4a5668; font-family: ui-monospace, monospace; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 .quota-row { margin-top: 15px; }
@@ -253,4 +254,3 @@ nav { display: grid; gap: 7px; }
   .usage-filters { align-items: stretch; flex-direction: column; }
   .usage-filters select { width: 100%; }
 }
-

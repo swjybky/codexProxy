@@ -201,13 +201,22 @@ class AppStore:
             for item in self._managed_keys():
                 key_id = str(item.get("id", ""))
                 counts = usage.get(key_id, {})
-                used_tokens = max(0, int(counts.get("input_tokens", 0))) + max(
+                total_used_tokens = max(0, int(counts.get("input_tokens", 0))) + max(
                     0, int(counts.get("output_tokens", 0))
                 )
+                # A recharge starts quota accounting from the saved cumulative total;
+                # reporting still reads the complete, immutable usage history.
+                usage_offset = max(0, int(item.get("usage_offset_tokens", 0)))
+                used_tokens = max(0, total_used_tokens - usage_offset)
                 token_limit = max(0, int(item.get("token_limit", 0)))
+                public_item = {
+                    key: value
+                    for key, value in item.items()
+                    if key != "usage_offset_tokens"
+                }
                 result.append(
                     {
-                        **item,
+                        **public_item,
                         "used_tokens": used_tokens,
                         "remaining_tokens": max(0, token_limit - used_tokens),
                     }
@@ -252,11 +261,35 @@ class AppStore:
             self._write_managed_keys(remaining)
             self._remove_key_usage(key_id)
 
+    def update_api_key_limit(self, key_id: str, token_limit: Any) -> dict[str, Any]:
+        try:
+            normalized_limit = int(token_limit)
+        except (TypeError, ValueError) as error:
+            raise ValueError("请选择有效的 Token 额度") from error
+        if normalized_limit not in USER_KEY_TOKEN_LIMITS:
+            raise ValueError("Token 额度只能选择 500 万、1000 万、2000 万或 1 亿")
+
+        with self._lock:
+            keys = self._managed_keys()
+            target = next((item for item in keys if str(item.get("id", "")) == key_id), None)
+            if target is None:
+                raise ValueError("秘钥不存在")
+            target["token_limit"] = normalized_limit
+            self._write_managed_keys(keys)
+            return next(item for item in self.list_api_keys() if item["id"] == key_id)
+
     def reset_api_key_usage(self, key_id: str) -> dict[str, Any]:
         with self._lock:
-            if not any(str(item.get("id", "")) == key_id for item in self._managed_keys()):
+            keys = self._managed_keys()
+            target = next((item for item in keys if str(item.get("id", "")) == key_id), None)
+            if target is None:
                 raise ValueError("秘钥不存在")
-            self._remove_key_usage(key_id)
+            counts = self._usage_by_key().get(key_id, {})
+            # Preserve token_usage.json for statistics and move only the quota baseline.
+            target["usage_offset_tokens"] = max(0, int(counts.get("input_tokens", 0))) + max(
+                0, int(counts.get("output_tokens", 0))
+            )
+            self._write_managed_keys(keys)
             return next(item for item in self.list_api_keys() if item["id"] == key_id)
 
     def authenticate_api_key(self, supplied: str) -> dict[str, Any] | None:

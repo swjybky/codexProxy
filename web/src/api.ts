@@ -103,6 +103,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ name, token_limit: tokenLimit }),
     }),
+  updateKeyLimit: (keyId: string, tokenLimit: number) =>
+    request<{ key: ManagedKey }>(`/api/keys/${encodeURIComponent(keyId)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ token_limit: tokenLimit }),
+    }),
   resetKeyUsage: (keyId: string) =>
     request<{ key: ManagedKey }>(`/api/keys/${encodeURIComponent(keyId)}/reset`, { method: 'POST' }),
   deleteKey: (keyId: string) =>
